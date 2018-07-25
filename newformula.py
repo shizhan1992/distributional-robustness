@@ -160,8 +160,8 @@ def main(argv=None):
         print('Test accuracy on pgm examples: %0.4f\n' % accuracy_adv_pgm)
 
     # Train the model
-    # model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
-    #             args=train_params, save=False)
+    model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
+                args=train_params, save=False)
     model_train_adv(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
                         args=train_params, save=False)
 
