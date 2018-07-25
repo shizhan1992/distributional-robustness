@@ -117,19 +117,19 @@ def main(argv=None):
     predictions_adv_wrm = model(wrm.generate(x, **wrm_params))
 
     fgsm = FastGradientMethod(model, sess=sess)
-    fgsm_params = {'eps': 0.5, 'ord': 2, 'clip_min': 0., 'clip_max': 1.}
+    fgsm_params = {'eps': 0.1, 'ord': np.inf, 'clip_min': 0., 'clip_max': 1.}
     adv_fgsm = fgsm.generate(x, **fgsm_params)
     adv_fgsm = tf.stop_gradient(adv_fgsm)
     preds_adv_fgsm = model(adv_fgsm)
 
     ifgm = BasicIterativeMethod(model, sess=sess)
-    ifgm_params = {'eps': 0.5, 'ord': 2, 'eps_iter': 0.02, 'nb_iter': 10, 'clip_min': 0., 'clip_max': 1.}
+    ifgm_params = {'eps': 0.1, 'ord': np.inf, 'eps_iter': 0.02, 'nb_iter': 10, 'clip_min': 0., 'clip_max': 1.}
     adv_ifgm = ifgm.generate(x, **ifgm_params)
     adv_ifgm = tf.stop_gradient(adv_ifgm)
     preds_adv_ifgm = model(adv_ifgm)
 
     pgm = MadryEtAl(model, sess=sess)
-    pgm_params = {'eps': 0.5, 'ord': 2, 'eps_iter': 0.01, 'nb_iter': 30, 'clip_min': 0., 'clip_max': 1.}
+    pgm_params = {'eps': 0.1, 'ord': np.inf, 'eps_iter': 0.01, 'nb_iter': 30, 'clip_min': 0., 'clip_max': 1.}
     adv_pgm = pgm.generate(x, **pgm_params)
     adv_pgm = tf.stop_gradient(adv_pgm)
     preds_adv_pgm = model(adv_pgm)
@@ -160,8 +160,8 @@ def main(argv=None):
         print('Test accuracy on pgm examples: %0.4f\n' % accuracy_adv_pgm)
 
     # Train the model
-    model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
-                args=train_params, save=False)
+    # model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
+    #             args=train_params, save=False)
     model_train_adv(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
                         args=train_params, save=False)
 

@@ -175,6 +175,8 @@ def model_train_adv(sess, x, y, predictions, X_train, Y_train, save=False,
         shp = w.get_shape().as_list()
         print("- {} shape:{} size:{}".format(w.name, shp, np.prod(shp)))
         if 'kernel' in w.name:
+            if len(shp) == 4: #cnn
+                w = tf.reshape(w, [ shp[0]*shp[1]*shp[2], shp[3] ])
             sn = tf.svd(w, compute_uv=False)[..., 0]
             weights_svd.append(sn)
     loss += 0.5*tf.add_n(weights_svd) / len(weights_svd)
