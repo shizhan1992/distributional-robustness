@@ -65,7 +65,7 @@ def model_loss(y, model, mean=True):
 
 
 def model_train(sess, x, y, predictions, X_train, Y_train, save=False,
-                predictions_adv=None, evaluate=None, verbose=True, args=None):
+                predictions_adv=None, evaluate=None, regulizer=False, regcons=0.5, verbose=True, args=None):
     """
     Train a TF graph
     :param sess: TF session to use when training the graph
@@ -101,6 +101,25 @@ def model_train(sess, x, y, predictions, X_train, Y_train, save=False,
         p = 1.0
         loss = ((1-p)*loss + p*model_loss(y, predictions_adv))
 
+    if regulizer:
+        # l2 norm
+        # reg_losses = tf.losses.get_regularization_losses()
+        # loss += tf.add_n(reg_losses)/len(reg_losses)
+
+        # spectral norm
+        vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+        weights_svd = []
+        for w in vars:
+            shp = w.get_shape().as_list()
+            print("- {} shape:{} size:{}".format(w.name, shp, np.prod(shp)))
+            if 'kernel' in w.name:
+                if len(shp) == 4: #cnn
+                    w = tf.reshape(w, [ shp[0]*shp[1]*shp[2], shp[3] ])
+                sn = tf.svd(w, compute_uv=False)[..., 0]
+                weights_svd.append(sn)
+        loss += regcons*tf.add_n(weights_svd) / len(weights_svd)
+
+
     train_step = tf.train.AdamOptimizer(learning_rate=args.learning_rate).minimize(loss)
 
     with sess.as_default():
@@ -143,102 +162,6 @@ def model_train(sess, x, y, predictions, X_train, Y_train, save=False,
             print("Completed model training and saved at:" + str(save_path))
         else:
             print("Completed model training.")
-        # writer.close()
-    return True
-
-# training function with spectral regularizer
-def model_train_adv(sess, x, y, predictions, X_train, Y_train, save=False,
-                predictions_adv=None, evaluate=None, verbose=True, args=None):
-
-    args = _FlagsWrapper(args or {})
-
-    # Check that necessary arguments were given (see doc above)
-    assert args.nb_epochs, "Number of epochs was not given in args dict"
-    assert args.learning_rate, "Learning rate was not given in args dict"
-    assert args.batch_size, "Batch size was not given in args dict"
-
-    if save:
-        assert args.train_dir, "Directory for save was not given in args dict"
-        assert args.filename, "Filename for save was not given in args dict"
-
-    # Define loss
-    loss = model_loss(y, predictions)
-
-    # l2 norm
-    # reg_losses = tf.losses.get_regularization_losses()
-    # loss += tf.add_n(reg_losses)/len(reg_losses)
-
-    # spectral norm
-    vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-    weights_svd = []
-    for w in vars:
-        shp = w.get_shape().as_list()
-        print("- {} shape:{} size:{}".format(w.name, shp, np.prod(shp)))
-        if 'kernel' in w.name:
-            if len(shp) == 4: #cnn
-                w = tf.reshape(w, [ shp[0]*shp[1]*shp[2], shp[3] ])
-            sn = tf.svd(w, compute_uv=False)[..., 0]
-            weights_svd.append(sn)
-    loss += 0.5*tf.add_n(weights_svd) / len(weights_svd)
-
-
-    # var = tf.trainable_variables()
-    # layers = len(weights)
-    # sn_prod = 1
-    # for weight in weights:
-    #     # sn_prod *= tf.svd(weight, compute_uv=False)[..., 0]
-    #     sn_prod += tf.nn.l2_loss(weight)
-    #
-    # loss = loss + 0.01 * sn_prod
-
-    train_step = tf.train.AdamOptimizer(learning_rate=args.learning_rate).minimize(loss)
-
-    with sess.as_default():
-        # writer = tf.summary.FileWriter("/tmp/log/", sess.graph)
-
-        if hasattr(tf, "global_variables_initializer"):
-            tf.global_variables_initializer().run()
-        else:
-            sess.run(tf.initialize_all_variables())
-
-        # weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-        # for w in weights:
-        #     print(sess.run(w))
-
-        for epoch in six.moves.xrange(args.nb_epochs):
-            if verbose:
-                print("Epoch " + str(epoch))
-
-            # Compute number of batches
-            nb_batches = int(math.ceil(float(len(X_train)) / args.batch_size))
-            assert nb_batches * args.batch_size >= len(X_train)
-
-            prev = time.time()
-            for batch in range(nb_batches):
-
-                # Compute batch start and end indices
-                start, end = batch_indices(
-                    batch, len(X_train), args.batch_size)
-
-                # Perform one training step
-                train_step.run(feed_dict={x: X_train[start:end],
-                                          y: Y_train[start:end]})
-            assert end >= len(X_train)  # Check that all examples were used
-            cur = time.time()
-            if verbose:
-                print("\tEpoch took " + str(cur - prev) + " seconds")
-            prev = cur
-            if evaluate is not None:
-                evaluate()
-
-        if save:
-            save_path = os.path.join(args.train_dir, args.filename)
-            saver = tf.train.Saver()
-            saver.save(sess, save_path)
-            print("Completed model training and saved at:" + str(save_path))
-        else:
-            print("Completed model training.")
-
         # writer.close()
     return True
 

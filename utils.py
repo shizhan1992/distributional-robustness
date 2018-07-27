@@ -227,7 +227,7 @@ def cnn_model(logits=False, input_ph=None, img_rows=28, img_cols=28,
     else:
         return model
 
-def shallow_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
+def dense_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
               channels=1, nb_filters=64, nb_classes=10, activation='none'):
     model = Sequential()
 
@@ -254,20 +254,7 @@ n_hidden_2 = 100  # 2nd layer number of neurons
 num_input = 784  # MNIST data input (img shape: 28*28)
 nb_classes=10
 
-# Store layers weight & bias# Store
-# weights = {
-#         'h1': tf.Variable(tf.random_normal([num_input, n_hidden_1])),
-#         'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-#         'out': tf.Variable(tf.random_normal([n_hidden_2, nb_classes]))
-#     }
-#
-# biases = {
-#         'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-#         'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-#         'out': tf.Variable(tf.random_normal([nb_classes]))
-#     }
-
-def shallow_model(x):
+def dense_model(x):
     with tf.variable_scope('model', reuse=tf.AUTO_REUSE):
         # nn = tf.layers.dense(x, n_hidden_1, activation=tf.nn.elu)
         # nn = tf.layers.dense(nn, n_hidden_2, activation=tf.nn.elu)
@@ -279,6 +266,27 @@ def shallow_model(x):
 
     return nn
 
+def toy_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
+              channels=1, nb_filters=64, nb_classes=10, activation='none'):
+    model = Sequential()
+
+    layers = [Dense(4, input_dim = 2),
+              Activation(activation),
+              Dense(2),
+              Activation(activation),
+              Dense(2)]
+
+    for layer in layers:
+        model.add(layer)
+
+    if logits:
+        logits_tensor = model(input_ph)
+    #model.add(Activation('softmax'))
+
+    if logits:
+        return model, logits_tensor
+    else:
+        return model
 
 def spectral_regularizer(weight_matrix):
     """
