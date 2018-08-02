@@ -12,6 +12,10 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten, Reshape
 import keras.regularizers as regularizers
 import tensorflow as tf
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import standard_ops
+from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -145,7 +149,7 @@ def random_targets(gt, nb_classes):
     return np_utils.to_categorical(np.asarray(result), nb_classes)
 
 
-def conv_2d(filters, kernel_shape, strides, padding, input_shape=None):
+def conv_2d(filters, kernel_shape, strides, padding, input_shape=None, name=None):
     """
     Defines the right convolutional layer according to the
     version of Keras that is installed.
@@ -166,22 +170,22 @@ def conv_2d(filters, kernel_shape, strides, padding, input_shape=None):
         if input_shape is not None:
             return Conv2D(filters=filters, kernel_size=kernel_shape,
                           strides=strides, padding=padding,
-                          input_shape=input_shape)
+                          input_shape=input_shape, name=name, )
         else:
             return Conv2D(filters=filters, kernel_size=kernel_shape,
-                          strides=strides, padding=padding)
+                          strides=strides, padding=padding, name=name)
     else:
         if input_shape is not None:
             return Convolution2D(filters, kernel_shape[0], kernel_shape[1],
                                  subsample=strides, border_mode=padding,
-                                 input_shape=input_shape)
+                                 input_shape=input_shape, name=name)
         else:
             return Convolution2D(filters, kernel_shape[0], kernel_shape[1],
-                                 subsample=strides, border_mode=padding)
+                                 subsample=strides, border_mode=padding, name=name)
 
 
-def cnn_model(logits=False, input_ph=None, img_rows=28, img_cols=28,
-              channels=1, nb_filters=64, nb_classes=10, activation='none'):
+def cnn_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
+              channels=1, nb_filters=64, nb_classes=10, activation='none', name='cnn_keras'):
     """
     Defines a CNN model using Keras sequential model
     :param logits: If set to False, returns a Keras model, otherwise will also
@@ -197,7 +201,7 @@ def cnn_model(logits=False, input_ph=None, img_rows=28, img_cols=28,
     :param nb_classes: the number of output classes
     :return:
     """
-    model = Sequential()
+    model = Sequential(name=name)
 
     # Define the layers successively (convolution layers are version dependent)
     if keras.backend.image_dim_ordering() == 'th':
@@ -206,14 +210,14 @@ def cnn_model(logits=False, input_ph=None, img_rows=28, img_cols=28,
         input_shape = (img_rows, img_cols, channels)
 
     layers = [conv_2d(nb_filters, (8, 8), (2, 2), "same",
-                      input_shape=input_shape),
+                      input_shape=input_shape, name='conv1'),
               Activation(activation),
-              conv_2d((nb_filters * 2), (6, 6), (2, 2), "valid"),
+              conv_2d((nb_filters * 2), (6, 6), (2, 2), "valid", name='conv2'),
               Activation(activation),
-              conv_2d((nb_filters * 2), (5, 5), (1, 1), "valid"),
+              conv_2d((nb_filters * 2), (5, 5), (1, 1), "valid", name='conv3'),
               Activation(activation),
               Flatten(),
-              Dense(nb_classes)]
+              Dense(nb_classes, name='dense1')]
 
     for layer in layers:
         model.add(layer)
@@ -227,13 +231,46 @@ def cnn_model(logits=False, input_ph=None, img_rows=28, img_cols=28,
     else:
         return model
 
-def dense_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
-              channels=1, nb_filters=64, nb_classes=10, activation='none'):
-    model = Sequential()
 
-    layers = [Dense(300, input_dim = 784),
+def cnn_model(x):
+    with tf.variable_scope('cnn', reuse=tf.AUTO_REUSE):
+        input_shape = x.get_shape().as_list()
+        output_shape = [1, ceil(28/2), ceil(28/2), 64]
+        layer_one_reg = spectral_regularizer(scale=0.5, strides=2, padding='same',
+                                            input_shape= input_shape, output_shape=output_shape,
+                                            weight_name='conv1')
+        net = tf.layers.conv2d(inputs=x, kernel_size=(8, 8), strides=2, padding='same',
+                         filters=64, activation=tf.nn.elu, name='conv1', kernel_regularizer=layer_one_reg)
+
+        input_shape = output_shape
+        output_shape = [1,  ceil((input_shape[1] - (6-1) * 1) / 2), ceil((input_shape[1] - (6-1) * 1) / 2), 128]
+        layer_two_reg = spectral_regularizer(scale=0.5, strides=2, padding='valid',
+                                             input_shape=input_shape, output_shape=output_shape,
+                                             weight_name='conv2')
+        net = tf.layers.conv2d(inputs=net, kernel_size=(6, 6), strides=2, padding='valid',
+                               filters=128, activation=tf.nn.elu, name='conv2', kernel_regularizer=layer_two_reg)
+
+        input_shape = output_shape
+        output_shape = [1, ceil((input_shape[1] - (5 - 1) * 1) / 2), ceil((input_shape[1] - (5 - 1) * 1) / 2), 128]
+        layer_three_reg = spectral_regularizer(scale=0.5, strides=2, padding='valid',
+                                             input_shape=input_shape, output_shape=output_shape,
+                                            weight_name='conv3')
+        net = tf.layers.conv2d(inputs=net, kernel_size=(5, 5), strides=1, padding='valid',
+                               filters=128, activation=tf.nn.elu, name='conv3', kernel_regularizer=layer_three_reg)
+        net = tf.layers.flatten(net)
+
+        layer_four_reg = spectral_regularizer(scale=0.5, weight_name='dense', conv=False)
+        model = tf.layers.dense(inputs=net, name='dense',
+                      units=10, activation=None, kernel_regularizer=layer_four_reg)
+
+    return model
+
+def dense_model_keras(logits=False, input_ph=None, activation='none', name='dnn_keras'):
+    model = Sequential(name=name)
+
+    layers = [Dense(300, input_dim = 784, name='dense1'),
               Activation(activation),
-              Dense(100),
+              Dense(100, name='dense2'),
               Activation(activation),
               Dense(10)]
 
@@ -242,33 +279,23 @@ def dense_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
 
     if logits:
         logits_tensor = model(input_ph)
-    #model.add(Activation('softmax'))
 
     if logits:
         return model, logits_tensor
     else:
         return model
 
-n_hidden_1 = 300  # 1st layer number of neurons
-n_hidden_2 = 100  # 2nd layer number of neurons
-num_input = 784  # MNIST data input (img shape: 28*28)
-nb_classes=10
 
 def dense_model(x):
-    with tf.variable_scope('model', reuse=tf.AUTO_REUSE):
-        # nn = tf.layers.dense(x, n_hidden_1, activation=tf.nn.elu)
-        # nn = tf.layers.dense(nn, n_hidden_2, activation=tf.nn.elu)
-        # nn = tf.layers.dense(nn, nb_classes, activation=tf.nn.elu)
-
-        nn = tf.layers.dense(x, n_hidden_1, activation=tf.nn.elu, kernel_regularizer= tf.contrib.layers.l2_regularizer(scale=0.1))
-        nn = tf.layers.dense(nn, n_hidden_2, activation=tf.nn.elu, kernel_regularizer= tf.contrib.layers.l2_regularizer(scale=0.1))
-        nn = tf.layers.dense(nn, nb_classes, activation=tf.nn.elu, kernel_regularizer= tf.contrib.layers.l2_regularizer(scale=0.1))
+    with tf.variable_scope('dnn', reuse=tf.AUTO_REUSE):
+        nn = tf.layers.dense(x, 300, activation=tf.nn.elu, kernel_regularizer= tf.contrib.layers.l2_regularizer(scale=0.1))
+        nn = tf.layers.dense(nn, 100, activation=tf.nn.elu, kernel_regularizer= tf.contrib.layers.l2_regularizer(scale=0.1))
+        nn = tf.layers.dense(nn, 10, activation=tf.nn.elu, kernel_regularizer= tf.contrib.layers.l2_regularizer(scale=0.1))
 
     return nn
 
-def toy_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
-              channels=1, nb_filters=64, nb_classes=10, activation='none'):
-    model = Sequential()
+def toy_model_keras(logits=False, input_ph=None, model_name=None, activation='none'):
+    model = Sequential(name=model_name)
 
     layers = [Dense(4, input_dim = 2),
               Activation(activation),
@@ -281,17 +308,107 @@ def toy_model_keras(logits=False, input_ph=None, img_rows=28, img_cols=28,
 
     if logits:
         logits_tensor = model(input_ph)
-    #model.add(Activation('softmax'))
 
     if logits:
         return model, logits_tensor
     else:
         return model
 
-def spectral_regularizer(weight_matrix):
+def spectral_regularizer(
+        scale=0.5,
+        strides=None,
+        padding=None,
+        input_shape=None,
+        output_shape=None,
+        num_iter=10,
+        weight_name=None,
+        method='power',
+        conv=True,
+        scope=None):
+    """Returns a function that can be used to apply spectral norm regularization to weights.
+    Args:
+        scale: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
+        scope: An optional scope name.
+        method: method to compute spectral norm: svd or power iteration (default)
+    Returns:
+        A function with signature `spectral_norm(weights)` that apply spectral norm  regularization.
+    Raises:
+        ValueError: If scale is negative or if scale is not a float.
     """
-    spectral regularization implementation
-    :param
-    :return: spectral norm of weight kernel
-    """
-    return 0.1 * tf.svd(weight_matrix, compute_uv=False)[..., 0]
+    if scale < 0.:
+        raise ValueError('Setting a scale less than 0 on a regularizer: %g' %scale)
+    if scale == 0.:
+        logging.info('Scale of 0 disables regularizer.')
+        return lambda _: None
+
+    def spectral_norm(weights, name=None):
+        """Applies spectral_norm regularization to weights."""
+        with ops.name_scope(scope, 'spectral_regularizer', [weights]) as name:
+            my_scale = ops.convert_to_tensor(scale,dtype=weights.dtype.base_dtype,name='scale')
+
+        if method=='power':
+            if conv:
+                s = power_iterate_conv(weights=weights, strides=strides, padding=padding.upper(),
+                                             input_shape=input_shape, output_shape=output_shape, num_iter=num_iter,
+                                             weight_name=weight_name)
+            else:
+                s = power_iterate(weights=weights, num_iter=num_iter, weight_name=weight_name)
+            return standard_ops.multiply(my_scale, s, name=name)
+        else: # svd
+            return standard_ops.multiply(my_scale, standard_ops.svd(weights, compute_uv=False)[..., 0],
+                                         name=name)
+
+    return spectral_norm
+
+
+def power_iterate_conv(
+    weights,
+    strides,
+    padding,
+    input_shape,
+    output_shape,
+    num_iter,
+    weight_name,
+    u=None,
+    ):
+    """Perform power iteration for a convolutional layer."""
+
+    strides = [1, strides, strides, 1]
+    with tf.name_scope(None, default_name='power_iteration_conv'):
+        with tf.variable_scope(weight_name, reuse=tf.AUTO_REUSE):
+            u_var = tf.get_variable('u_conv', [1] + list(output_shape[1:]),
+                                initializer=tf.random_normal_initializer(),
+                                trainable=False)
+        u = u_var
+        v = None
+        for _ in range(num_iter):
+            v = tf.nn.conv2d_transpose(u, weights, [1] + list(input_shape[1:]), strides, padding)
+            v /= tf.sqrt(tf.maximum(2 * tf.nn.l2_loss(v), 1e-12))
+            u = tf.nn.conv2d(v, weights, strides, padding)
+            u /= tf.sqrt(tf.maximum(2 * tf.nn.l2_loss(u), 1e-12))
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, tf.assign(u_var,
+                             u))
+        return tf.reduce_sum(u * tf.nn.conv2d(v, weights, strides,
+                             padding))
+
+def power_iterate(weights, num_iter, weight_name):
+    """Perform power iteration for a dense layer."""
+
+    with tf.name_scope(None, default_name='power_iteration'):
+        w_shape = weights.shape.as_list()
+        w = tf.reshape(weights, [-1, w_shape[-1]])
+
+        with tf.variable_scope(weight_name, reuse=tf.AUTO_REUSE):
+            u_var = tf.get_variable("u", [1, w_shape[-1]], initializer=tf.truncated_normal_initializer(), trainable=False)
+
+        u = u_var
+        v = None
+        for i in range(num_iter):
+            v = tf.matmul(u, tf.transpose(w))
+            v /= (tf.reduce_sum(v ** 2) ** 0.5 + 1e-12)
+            u = tf.matmul(v, w)
+            u /= (tf.reduce_sum(u ** 2) ** 0.5 + 1e-12)
+        tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, tf.assign(u_var,
+                              u))
+        sigma = tf.reduce_sum(tf.matmul(v, w) * tf.transpose(u))
+        return sigma

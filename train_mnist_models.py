@@ -102,41 +102,41 @@ def main(argv=None):
     model.model.save(FLAGS.train_dir + '/' + FLAGS.filename_erm)
 
 
-    # print('')
-    # print("Repeating the process, using Wasserstein adversarial training")
-    # # Redefine TF model graph
-    # model_adv = cnn_model(activation='elu')
-    # predictions_adv = model_adv(x)
-    # wrm2 = WassersteinRobustMethod(model_adv, sess=sess)
-    # wrm_params = {'eps': 1.3, 'ord': 2, 'y': y, 'steps': 15}
-    # predictions_adv_adv_wrm = model_adv(wrm2.generate(x, **wrm_params))
-    #
-    # fgsm = FastGradientMethod(model_adv, sess=sess)
-    # fgsm_params = {'eps': 0.2, 'clip_min': 0., 'clip_max': 1.}
-    # adv_fgsm = fgsm.generate(x, **fgsm_params)
-    # adv_fgsm = tf.stop_gradient(adv_fgsm)
-    # preds_adv_fgsm = model_adv(adv_fgsm)
-    #
-    #
-    # def evaluate_adv():
-    #     # Accuracy of adversarially trained model on legitimate test inputs
-    #     accuracy = model_eval(sess, x, y, predictions_adv, X_test, Y_test, args=eval_params)
-    #     print('Test accuracy on legitimate test examples: %0.4f' % accuracy)
-    #
-    #     # Accuracy of the adversarially trained model on Wasserstein adversarial examples
-    #     # accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_adv_wrm, \
-    #     #                                X_test, Y_test, args=eval_params)
-    #     # print('Test accuracy on Wasserstein examples: %0.4f\n' % accuracy_adv_wass)
-    #
-    #     # Accuracy of the model on Wasserstein adversarial examples
-    #     accuracy_adv_fgsm = model_eval(sess, x, y, preds_adv_fgsm, X_test, \
-    #                                    Y_test, args=eval_params)
-    #     print('Test accuracy on fgsm examples: %0.4f\n' % accuracy_adv_fgsm)
-    #
-    # model_train(sess, x, y, predictions_adv_adv_wrm, X_train, Y_train, \
-    #             predictions_adv=predictions_adv_adv_wrm, evaluate=evaluate_adv, \
-    #             args=train_params, save=False)
-    # model_adv.model.save(FLAGS.train_dir + '/' + FLAGS.filename_wrm)
+    print('')
+    print("Repeating the process, using Wasserstein adversarial training")
+    # Redefine TF model graph
+    model_adv = cnn_model(activation='elu')
+    predictions_adv = model_adv(x)
+    wrm2 = WassersteinRobustMethod(model_adv, sess=sess)
+    wrm_params = {'eps': 1.3, 'ord': 2, 'y': y, 'steps': 15}
+    predictions_adv_adv_wrm = model_adv(wrm2.generate(x, **wrm_params))
+
+    fgsm = FastGradientMethod(model_adv, sess=sess)
+    fgsm_params = {'eps': 0.2, 'clip_min': 0., 'clip_max': 1.}
+    adv_fgsm = fgsm.generate(x, **fgsm_params)
+    adv_fgsm = tf.stop_gradient(adv_fgsm)
+    preds_adv_fgsm = model_adv(adv_fgsm)
+
+
+    def evaluate_adv():
+        # Accuracy of adversarially trained model on legitimate test inputs
+        accuracy = model_eval(sess, x, y, predictions_adv, X_test, Y_test, args=eval_params)
+        print('Test accuracy on legitimate test examples: %0.4f' % accuracy)
+
+        # Accuracy of the adversarially trained model on Wasserstein adversarial examples
+        # accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_adv_wrm, \
+        #                                X_test, Y_test, args=eval_params)
+        # print('Test accuracy on Wasserstein examples: %0.4f\n' % accuracy_adv_wass)
+
+        # Accuracy of the model on Wasserstein adversarial examples
+        accuracy_adv_fgsm = model_eval(sess, x, y, preds_adv_fgsm, X_test, \
+                                       Y_test, args=eval_params)
+        print('Test accuracy on fgsm examples: %0.4f\n' % accuracy_adv_fgsm)
+
+    model_train(sess, x, y, predictions_adv_adv_wrm, X_train, Y_train, \
+                predictions_adv=predictions_adv_adv_wrm, evaluate=evaluate_adv, \
+                args=train_params, save=False)
+    model_adv.model.save(FLAGS.train_dir + '/' + FLAGS.filename_wrm)
 
 if __name__ == '__main__':
     app.run()

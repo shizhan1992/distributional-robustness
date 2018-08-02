@@ -21,8 +21,8 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 from utils_mnist import data_mnist, data_mnist_flat
-from utils_tf import model_train, model_eval, model_loss, model_train_adv
-from utils import cnn_model, shallow_model, shallow_model_keras
+from utils_tf import model_train, model_train_test, model_eval, model_loss
+from utils import cnn_model_keras, cnn_model, dense_model_keras, dense_model
 
 from keras.models import load_model
 from keras.backend import manual_variable_initialization
@@ -107,32 +107,32 @@ def main(argv=None):
 
     # Define TF model graph ( NOT adv training)
 
-    model = cnn_model(activation='elu')
-    # model = shallow_model_keras(activation='elu')
-    predictions = model(x)
+    # model = cnn_model_keras(activation='elu')
+    # model = dense_model_keras(activation='elu')
+    predictions = cnn_model(x)
 
     # Attackers: WRM---FGSM---IFGM
-    wrm = WassersteinRobustMethod(model, sess=sess)
+    wrm = WassersteinRobustMethod(cnn_model, sess=sess)
     wrm_params = {'eps': 1.3, 'ord': 2, 'y': y, 'steps': 15}
-    predictions_adv_wrm = model(wrm.generate(x, **wrm_params))
+    predictions_adv_wrm = cnn_model(wrm.generate(x, **wrm_params))
 
-    fgsm = FastGradientMethod(model, sess=sess)
+    fgsm = FastGradientMethod(cnn_model, sess=sess)
     fgsm_params = {'eps': 0.1, 'ord': np.inf, 'clip_min': 0., 'clip_max': 1.}
     adv_fgsm = fgsm.generate(x, **fgsm_params)
     adv_fgsm = tf.stop_gradient(adv_fgsm)
-    preds_adv_fgsm = model(adv_fgsm)
+    preds_adv_fgsm = cnn_model(adv_fgsm)
 
-    ifgm = BasicIterativeMethod(model, sess=sess)
+    ifgm = BasicIterativeMethod(cnn_model, sess=sess)
     ifgm_params = {'eps': 0.1, 'ord': np.inf, 'eps_iter': 0.02, 'nb_iter': 10, 'clip_min': 0., 'clip_max': 1.}
     adv_ifgm = ifgm.generate(x, **ifgm_params)
     adv_ifgm = tf.stop_gradient(adv_ifgm)
-    preds_adv_ifgm = model(adv_ifgm)
+    preds_adv_ifgm = cnn_model(adv_ifgm)
 
-    pgm = MadryEtAl(model, sess=sess)
+    pgm = MadryEtAl(cnn_model, sess=sess)
     pgm_params = {'eps': 0.1, 'ord': np.inf, 'eps_iter': 0.01, 'nb_iter': 30, 'clip_min': 0., 'clip_max': 1.}
     adv_pgm = pgm.generate(x, **pgm_params)
     adv_pgm = tf.stop_gradient(adv_pgm)
-    preds_adv_pgm = model(adv_pgm)
+    preds_adv_pgm = cnn_model(adv_pgm)
 
     def evaluate():
         # Evaluate the accuracy of the MNIST model on legitimate test examples
@@ -154,59 +154,16 @@ def main(argv=None):
                                        Y_test, args=eval_params)
         print('Test accuracy on ifgm examples: %0.4f' % accuracy_adv_ifgm)
 
-        # Accuracy of the model on IFGM adversarial examples
-        accuracy_adv_pgm = model_eval(sess, x, y, preds_adv_pgm, X_test, \
-                                       Y_test, args=eval_params)
-        print('Test accuracy on pgm examples: %0.4f\n' % accuracy_adv_pgm)
+        # Accuracy of the model on PGM adversarial examples
+        # accuracy_adv_pgm = model_eval(sess, x, y, preds_adv_pgm, X_test, \
+        #                                Y_test, args=eval_params)
+        # print('Test accuracy on pgm examples: %0.4f\n' % accuracy_adv_pgm)
 
     # Train the model
-    model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
-                args=train_params, save=False)
-    model_train_adv(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
-                        args=train_params, save=False)
-
-
-    # print('')
-    # print("Repeating the process, using Wasserstein adversarial training")
-    # # Redefine TF model graph (adv training)
-    # predictions_adv = shallow_model(x)
-    #
-    # # Attackers
-    # wrm2 = WassersteinRobustMethod(shallow_model, sess=sess)
-    # wrm_params = {'eps': 1.3, 'ord': 2, 'y': y, 'steps': 15}
-    # predictions_adv_adv_wrm = shallow_model(wrm2.generate(x, **wrm_params))
-    #
-    # fgsm2 = FastGradientMethod(shallow_model, sess=sess)
-    # fgsm_params = {'eps': 0.2, 'clip_min': 0., 'clip_max': 1.}
-    # preds_adv_adv_fgsm = shallow_model(tf.stop_gradient(fgsm2.generate(x, **fgsm_params)))
-    #
-    # ifgm2 = BasicIterativeMethod(shallow_model, sess=sess)
-    # ifgm_params = {'eps': 0.2, 'eps_iter': 0.05, 'nb_iter': 10, 'clip_min': 0., 'clip_max': 1.}
-    # preds_adv_adv_ifgm = shallow_model(tf.stop_gradient(ifgm2.generate(x, **ifgm_params)))
-    #
-    # def evaluate_adv():
-    #     # Accuracy of adversarially trained model on legitimate test inputs
-    #     accuracy = model_eval(sess, x, y, predictions_adv, X_test, Y_test, args=eval_params)
-    #     print('Test accuracy on legitimate test examples: %0.4f' % accuracy)
-    #
-    #     # Accuracy of the adversarially trained model on Wasserstein adversarial examples
-    #     # accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_adv_wrm, \
-    #     #                                X_test, Y_test, args=eval_params)
-    #     # print('Test accuracy on Wasserstein examples: %0.4f' % accuracy_adv_wass)
-    #
-    #     # Accuracy of the model on Wasserstein adversarial examples
-    #     accuracy_adv_fgsm = model_eval(sess, x, y, preds_adv_adv_fgsm, X_test, \
-    #                                    Y_test, args=eval_params)
-    #     print('Test accuracy on fgsm examples: %0.4f' % accuracy_adv_fgsm)
-    #
-    #     # Accuracy of the model on IFGM adversarial examples
-    #     accuracy_adv_ifgm = model_eval(sess, x, y, preds_adv_adv_ifgm, X_test, \
-    #                                    Y_test, args=eval_params)
-    #     print('Test accuracy on ifgm examples: %0.4f\n' % accuracy_adv_ifgm)
-    #
-    #
-    # model_train_adv(sess, x, y, predictions_adv, X_train, Y_train, evaluate=evaluate_adv, \
+    # model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
     #             args=train_params, save=False)
+    model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
+                    regulizer=True, regcons=0.5, model=cnn_model, lossregfunc=True, args=train_params, save=False)
 
 
 if __name__ == '__main__':
